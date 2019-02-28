@@ -44,7 +44,9 @@
 
 using namespace std;
 
-IIWA_HW::IIWA_HW(ros::NodeHandle nh) : last_joint_position_command_(7, 0)
+IIWA_HW::IIWA_HW(ros::NodeHandle nh) : 
+  last_joint_position_command_(7, 0),
+  last_joint_velocity_command_(7, 0)
 {
   nh_ = nh;
 
@@ -55,6 +57,7 @@ IIWA_HW::IIWA_HW(ros::NodeHandle nh) : last_joint_position_command_(7, 0)
   interface_type_.push_back("PositionJointInterface");
   interface_type_.push_back("EffortJointInterface");
   interface_type_.push_back("VelocityJointInterface");
+  interface_type_.push_back("PosVelJointInterface");
 }
 
 ros::Rate* IIWA_HW::getRate() {
@@ -148,8 +151,16 @@ bool IIWA_HW::start()
 
     effort_interface_.registerHandle(joint_handle);
 
+    // position velocity command handle
+    hardware_interface::PosVelJointHandle pos_vel_joint_handle = hardware_interface::PosVelJointHandle(
+      state_interface_.getHandle(device_->joint_names[i]), 
+      &device_->joint_position_command[i],
+      &device_->joint_velocity_command[i]
+    );
+    pos_vel_interface_.registerHandle(pos_vel_joint_handle);
+
     registerJointLimits(device_->joint_names[i], joint_handle, &urdf_model_, &device_->joint_lower_limits[i],
-                        &device_->joint_upper_limits[i], &device_->joint_effort_limits[i]);
+                        &device_->joint_upper_limits[i], &device_->joint_velocity_limits[i], &device_->joint_effort_limits[i]);
   }
 
   ROS_INFO("Register state and effort interfaces");
@@ -159,16 +170,18 @@ bool IIWA_HW::start()
   this->registerInterface(&state_interface_);
   this->registerInterface(&effort_interface_);
   this->registerInterface(&position_interface_);
+  this->registerInterface(&pos_vel_interface_);
 
   return true;
 }
 
 void IIWA_HW::registerJointLimits(const std::string &joint_name, const hardware_interface::JointHandle &joint_handle,
                                   const urdf::Model *const urdf_model, double *const lower_limit,
-                                  double *const upper_limit, double *const effort_limit)
+                                  double *const upper_limit, double *const velocity_limit, double *const effort_limit)
 {
   *lower_limit = -std::numeric_limits<double>::max();
   *upper_limit = std::numeric_limits<double>::max();
+  *velocity_limit = std::numeric_limits<double>::max();
   *effort_limit = std::numeric_limits<double>::max();
 
   joint_limits_interface::JointLimits limits;
@@ -197,6 +210,9 @@ void IIWA_HW::registerJointLimits(const std::string &joint_name, const hardware_
     *lower_limit = limits.min_position;
     *upper_limit = limits.max_position;
   }
+
+  if (limits.has_velocity_limits)
+    *velocity_limit = limits.max_velocity;
 
   if (limits.has_effort_limits)
     *effort_limit = limits.max_effort;
@@ -284,6 +300,24 @@ bool IIWA_HW::write(ros::Duration period)
     else if (interface_ == interface_type_.at(2))
     {
       // TODO
+    }
+    // Joint Position & Velocity Control
+    else if (interface_ == interface_type_.at(3))
+    {
+      // avoid sending the same joint command over and over
+      if (device_->joint_position_command == last_joint_position_command_ &&
+          device_->joint_velocity_command == last_joint_velocity_command_)
+        return 0;
+      
+      last_joint_position_command_ = device_->joint_position_command;
+      last_joint_velocity_command_ = device_->joint_velocity_command;
+
+      // Building the message
+      vectorToIiwaMsgsJoint(device_->joint_position_command, command_joint_position_velociy_.position);
+      vectorToIiwaMsgsJoint(device_->joint_velocity_command, command_joint_position_velociy_.velocity);
+      command_joint_position_velociy_.header.stamp = ros::Time::now();
+
+      iiwa_ros_conn_.setJointPositionVelocity(command_joint_position_velociy_);
     }
   }
   else if (delta.toSec() >= 10)

@@ -50,6 +50,7 @@
 #include <control_toolbox/filters.h>
 #include <controller_manager/controller_manager.h>
 #include <hardware_interface/joint_command_interface.h>
+#include <hardware_interface/posvel_command_interface.h>
 #include <hardware_interface/joint_state_interface.h>
 #include <joint_limits_interface/joint_limits.h>
 #include <joint_limits_interface/joint_limits_interface.h>
@@ -94,7 +95,7 @@ public:
    */
   void registerJointLimits(const std::string& joint_name, const hardware_interface::JointHandle& joint_handle,
                            const urdf::Model* const urdf_model, double* const lower_limit, double* const upper_limit,
-                           double* const effort_limit);
+                           double* const velocity_limit, double* const effort_limit);
 
   /**
    * \brief Reads the current robot state via the IIWARos interfae and sends the values to the IIWA device struct.
@@ -129,10 +130,11 @@ public:
 
     std::vector<double> joint_lower_limits, /**< Lower joint limits */
         joint_upper_limits,                 /**< Upper joint limits */
+        joint_velocity_limits,              /**< Velocity joint limits */
         joint_effort_limits;                /**< Effort joint limits */
 
     /**< Joint state and commands */
-    std::vector<double> joint_position, joint_position_prev, joint_velocity, joint_effort, joint_position_command,
+    std::vector<double> joint_position, joint_position_prev, joint_velocity, joint_effort, joint_position_command, joint_velocity_command,
         joint_stiffness_command, joint_damping_command, joint_effort_command;
 
     /**
@@ -146,11 +148,13 @@ public:
       joint_effort.resize(IIWA_JOINTS);
       joint_position_command.resize(IIWA_JOINTS);
       joint_effort_command.resize(IIWA_JOINTS);
+      joint_velocity_command.resize(IIWA_JOINTS);
       joint_stiffness_command.resize(IIWA_JOINTS);
       joint_damping_command.resize(IIWA_JOINTS);
 
       joint_lower_limits.resize(IIWA_JOINTS);
       joint_upper_limits.resize(IIWA_JOINTS);
+      joint_velocity_limits.resize(IIWA_JOINTS);
       joint_effort_limits.resize(IIWA_JOINTS);
     }
 
@@ -186,6 +190,7 @@ private:
   hardware_interface::JointStateInterface state_interface_;       /**< Interface for joint state */
   hardware_interface::EffortJointInterface effort_interface_;     /**< Interface for joint impedance control */
   hardware_interface::PositionJointInterface position_interface_; /**< Interface for joint position control */
+  hardware_interface::PosVelJointInterface pos_vel_interface_;
 
   /** Interfaces for limits */
   joint_limits_interface::EffortJointSaturationInterface ej_sat_interface_;
@@ -205,9 +210,11 @@ private:
   iiwa_msgs::JointTorque joint_torque_;
 
   iiwa_msgs::JointPosition command_joint_position_;
+  iiwa_msgs::JointPositionVelocity command_joint_position_velociy_;
   iiwa_msgs::JointTorque command_joint_torque_;
 
   std::vector<double> last_joint_position_command_;
+  std::vector<double> last_joint_velocity_command_;
 
   std::vector<std::string> interface_type_; /**< Contains the strings defining the possible hardware interfaces. */
 };
