@@ -76,7 +76,7 @@ public:
   void set(ROSMSG value) {
     last_update_time = ros::Time::now();
     holder_.set(value);
-    callback_(value);
+    // callback_(value);
   }
 
   ROSMSG get() { return holder_.get(); }
